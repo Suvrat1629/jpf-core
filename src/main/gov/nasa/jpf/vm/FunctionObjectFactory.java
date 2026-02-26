@@ -22,6 +22,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import gov.nasa.jpf.jvm.JVMStackFrame;
+import gov.nasa.jpf.vm.CallSiteDescriptor;
+import gov.nasa.jpf.vm.GeneratedClassInfo;
+import gov.nasa.jpf.vm.asm.AsmCallSiteGenerator;
 
 /**
  * @author Nastaran Shafiei <nastaran.shafiei@gmail.com>
@@ -136,6 +139,46 @@ public class FunctionObjectFactory {
     if (bmi.getBmType() == BootstrapMethodInfo.BMType.STRING_CONCATENATION) {
       createConcatStringCall(ti, bmi.getBmArg(), freeVariableTypeNames, freeVariableValues);
       return MJIEnv.NULL;
+    } else if (bmi.getBmType() == BootstrapMethodInfo.BMType.OBJECT_METHODS) {
+    // Handle Record/ObjectMethods bootstrap: generate helper class and call its static methods
+    AsmCallSiteGenerator gen = new AsmCallSiteGenerator();
+    // Use resolved component type names from the BootstrapMethodInfo if available
+    String[] compTypes = bmi.getComponentTypeNames();
+    CallSiteDescriptor desc = new CallSiteDescriptor(bmi.enclosingClass.getName(), samUniqueName, "", null, compTypes);
+      try {
+  GeneratedClassInfo gci = gen.generateAdapter(desc);
+  // register generated class bytes with class loader so it's visible to JPF
+  ClassInfo helperCi = cli.getResolvedClassInfo(gci.getClassName(), gci.getClassBytes(), 0, gci.getClassBytes().length);
+
+        // create function object instance so we can set fields below and return a reference
+        ei = heap.newObject(funcObjType, ti);
+
+          // Register helper mapping keyed by the synthetic function object's SAM MethodInfo so the native peer can find it
+          try {
+          // find the SAM MethodInfo on the synthetic function object type
+          MethodInfo samMi = funcObjType.getMethod(samUniqueName, false);
+          if (samMi != null) {
+            String key = funcObjType.getName() + "#" + samMi.getUniqueName();
+            gov.nasa.jpf.vm.RecordComponent[] rcs = bmi.getRecordComponents();
+            CallSiteMarshaller.registerHelper(key, gci.getClassName(), rcs);
+
+            // create a peer instance and attach a NativeMethodInfo that delegates to our generic bridge
+            Class<?> peerCls = JPF_gov_nasa_jpf_vm_CallSiteBridge.class;
+            NativePeer peer = NativePeer.getInstance(peerCls, NativePeer.class);
+
+            // use a single generic bridge that accepts an argument array reference
+            java.lang.reflect.Method bridgeM = peer.getClass().getMethod("bridgeGeneric", MJIEnv.class, int.class, int.class);
+
+            NativeMethodInfo nmi = new NativeMethodInfo(samMi, bridgeM, peer);
+            nmi.replace(samMi);
+          }
+        } catch (Exception x) {
+          x.printStackTrace();
+        }
+      } catch (Exception e) {
+        e.printStackTrace();
+        return MJIEnv.NULL;
+      }
     } else {
       ei = heap.newObject(funcObjType, ti); // In the case of Lambda Expressions
     }

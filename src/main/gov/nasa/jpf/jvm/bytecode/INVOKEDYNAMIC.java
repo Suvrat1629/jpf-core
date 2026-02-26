@@ -27,6 +27,9 @@ import gov.nasa.jpf.vm.MJIEnv;
 import gov.nasa.jpf.vm.StackFrame;
 import gov.nasa.jpf.vm.ThreadInfo;
 import gov.nasa.jpf.vm.Types;
+import gov.nasa.jpf.vm.CallSiteDescriptor;
+import gov.nasa.jpf.vm.GeneratedClassInfo;
+import gov.nasa.jpf.vm.asm.AsmCallSiteGenerator;
 import gov.nasa.jpf.vm.VM;
 
 /**

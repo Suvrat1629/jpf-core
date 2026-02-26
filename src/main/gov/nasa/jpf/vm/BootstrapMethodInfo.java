@@ -43,7 +43,8 @@ public class BootstrapMethodInfo {
   public enum BMType{
     STRING_CONCATENATION,
     LAMBDA_EXPRESSION,
-    SERIALIZABLE_LAMBDA_EXPRESSION
+    SERIALIZABLE_LAMBDA_EXPRESSION,
+    OBJECT_METHODS
   }
   BMType bmType;
   public BootstrapMethodInfo(int lambdaRefKind, ClassInfo enclosingClass, MethodInfo lambdaBody, String samDescriptor,
@@ -62,9 +63,17 @@ public class BootstrapMethodInfo {
    */
   public BootstrapMethodInfo(ClassInfo enclosingClass, int[] cpArgs) {
     this.enclosingClass = enclosingClass;
-
-      // TODO: find a way to parse lambdaBody, samDescriptor etc
+      // store raw cp args for later parsing by the resolver
+      this.cpArgs = cpArgs;
+      this.bmType = BMType.OBJECT_METHODS; // default when constructed this way
   }
+
+  // raw bootstrap cp args (if available)
+  int[] cpArgs;
+  // Resolved record component type signatures (JVM descriptor form), if available
+  String[] componentTypeNames;
+  // Resolved record component accessors (best-effort)
+  RecordComponent[] recordComponents;
 
   @Override
   public String toString() {
@@ -87,4 +96,14 @@ public class BootstrapMethodInfo {
   public String getBmArg(){ return bmArg;}
 
   public BMType getBmType() { return bmType;}
+
+  public void setBmType(BMType bmType) { this.bmType = bmType; }
+
+  public String[] getComponentTypeNames() { return componentTypeNames; }
+
+  public void setComponentTypeNames(String[] componentTypeNames) { this.componentTypeNames = componentTypeNames; }
+
+  public RecordComponent[] getRecordComponents() { return recordComponents; }
+
+  public void setRecordComponents(RecordComponent[] recordComponents) { this.recordComponents = recordComponents; }
 }

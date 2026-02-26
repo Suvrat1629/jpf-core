@@ -180,12 +180,106 @@ public class JVMClassInfo extends ClassInfo {
           enclosingLambdaCls = JVMClassInfo.this;
         }
 
-        assert (enclosingLambdaCls!=null);
+        // detect ObjectMethods bootstrap (records helper)
+        if ("java/lang/invoke/ObjectMethods".equals(cls)) {
+          // store raw cpArgs and attempt to resolve component type signatures from the constant pool
+          BootstrapMethodInfo bmi = new BootstrapMethodInfo(enclosingLambdaCls, cpArgs);
+          try {
+            if (cpArgs != null && cpArgs.length > 0) {
+              java.util.List<String> compTypes = new java.util.ArrayList<>();
+              java.util.List<gov.nasa.jpf.vm.RecordComponent> recordAcc = new java.util.ArrayList<>();
+              for (int a : cpArgs) {
+                if (a <= 0 || a >= cf.getNumberOfCpEntries()) continue;
+                int cpTag = cf.getCpTag(a);
+                String compSig = null;
+                String owner = null;
+                String name = null;
+                int rcRefKind = 0;
 
-        String bmArg = cf.getBmArgString(cpArgs[0]);
+                switch (cpTag) {
+                  case ClassFile.METHOD_TYPE:
+                    // descriptor like "()Ljava/lang/String;" -> component type is return part
+                    String mtd = cf.methodTypeDescriptorAt(a);
+                    int pIdx = mtd.lastIndexOf(')');
+                    if (pIdx >= 0 && pIdx + 1 < mtd.length()) compSig = mtd.substring(pIdx + 1);
+                    break;
+                  case ClassFile.METHOD_HANDLE:
+                    rcRefKind = cf.mhRefTypeAt(a);
+                    int mrefIdx = cf.mhMethodRefIndexAt(a);
+                    if (mrefIdx > 0 && mrefIdx < cf.getNumberOfCpEntries()) {
+                      int refTag = cf.getCpTag(mrefIdx);
+                      if (refTag == ClassFile.METHOD_REF || refTag == ClassFile.INTERFACE_METHOD_REF) {
+                        owner = cf.methodClassNameAt(mrefIdx).replace('/', '.');
+                        name = cf.methodNameAt(mrefIdx);
+                        compSig = cf.methodDescriptorAt(mrefIdx);
+                      } else if (refTag == ClassFile.FIELD_REF) {
+                        owner = cf.fieldClassNameAt(mrefIdx).replace('/', '.');
+                        name = cf.fieldNameAt(mrefIdx);
+                        compSig = cf.fieldDescriptorAt(mrefIdx);
+                        rcRefKind = ClassFile.REF_GETFIELD; // treat as field
+                      }
+                    }
+                    break;
+                  case ClassFile.METHOD_REF:
+                  case ClassFile.INTERFACE_METHOD_REF:
+                    owner = cf.methodClassNameAt(a).replace('/', '.');
+                    name = cf.methodNameAt(a);
+                    compSig = cf.methodDescriptorAt(a);
+                    break;
+                  case ClassFile.FIELD_REF:
+                    owner = cf.fieldClassNameAt(a).replace('/', '.');
+                    name = cf.fieldNameAt(a);
+                    compSig = cf.fieldDescriptorAt(a);
+                    rcRefKind = ClassFile.REF_GETFIELD;
+                    break;
+                  case ClassFile.CONSTANT_CLASS:
+                    // not useful for component type
+                    break;
+                  case ClassFile.CONSTANT_UTF8:
+                    // sometimes descriptors are passed as utf8 indices - try parsing
+                    try {
+                      String s = cf.utf8At(a);
+                      if (s != null && s.startsWith("(")) {
+                        int rIdx = s.lastIndexOf(')');
+                        if (rIdx >= 0 && rIdx + 1 < s.length()) compSig = s.substring(rIdx + 1);
+                      }
+                    } catch (Exception x) {
+                      // ignore
+                    }
+                    break;
+                  default:
+                    // ignore other tags
+                    break;
+                }
+                if (compSig != null) {
+                  compTypes.add(compSig);
+                }
+                // always try to collect accessor metadata when available
+                if (name != null || owner != null || rcRefKind != 0) {
+                  recordAcc.add(new gov.nasa.jpf.vm.RecordComponent(owner, name, compSig, rcRefKind));
+                }
+              }
+                if (!compTypes.isEmpty()) {
+                  bmi.setComponentTypeNames(compTypes.toArray(new String[0]));
+                }
+                if (!recordAcc.isEmpty()) {
+                  bmi.setRecordComponents(recordAcc.toArray(new gov.nasa.jpf.vm.RecordComponent[0]));
+                }
+            }
+          } catch (Exception x) {
+            // best-effort; leave componentTypeNames null if parsing fails
+          }
 
-        setBootstrapMethodInfo(enclosingLambdaCls, mth, parameters, idx, refKind, descriptor, bmArg,
-                BootstrapMethodInfo.BMType.STRING_CONCATENATION);
+          bmi.setBmType(BootstrapMethodInfo.BMType.OBJECT_METHODS);
+          bootstrapMethods[idx] = bmi;
+        } else {
+          assert (enclosingLambdaCls!=null);
+
+          String bmArg = cf.getBmArgString(cpArgs[0]);
+
+          setBootstrapMethodInfo(enclosingLambdaCls, mth, parameters, idx, refKind, descriptor, bmArg,
+                  BootstrapMethodInfo.BMType.STRING_CONCATENATION);
+        }
       }
 
     }

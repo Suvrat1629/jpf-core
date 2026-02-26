@@ -140,41 +140,23 @@ public class FunctionObjectFactory {
       createConcatStringCall(ti, bmi.getBmArg(), freeVariableTypeNames, freeVariableValues);
       return MJIEnv.NULL;
     } else if (bmi.getBmType() == BootstrapMethodInfo.BMType.OBJECT_METHODS) {
-    // Handle Record/ObjectMethods bootstrap: generate helper class and call its static methods
-    AsmCallSiteGenerator gen = new AsmCallSiteGenerator();
-    // Use resolved component type names from the BootstrapMethodInfo if available
-    String[] compTypes = bmi.getComponentTypeNames();
-    CallSiteDescriptor desc = new CallSiteDescriptor(bmi.enclosingClass.getName(), samUniqueName, "", null, compTypes);
+      // Clean final version: generate helper + compute result + push to stack, return NULL
+      // No function object, no SAM replacement, no bridge registration for SAM
+      AsmCallSiteGenerator gen = new AsmCallSiteGenerator();
+      String[] compTypes = bmi.getComponentTypeNames();
+      CallSiteDescriptor desc = new CallSiteDescriptor(bmi.enclosingClass.getName(), samUniqueName, "", null, compTypes);
       try {
-  GeneratedClassInfo gci = gen.generateAdapter(desc);
-  // register generated class bytes with class loader so it's visible to JPF
-  ClassInfo helperCi = cli.getResolvedClassInfo(gci.getClassName(), gci.getClassBytes(), 0, gci.getClassBytes().length);
+        GeneratedClassInfo gci = gen.generateAdapter(desc);
+        ClassInfo helperCi = cli.getResolvedClassInfo(gci.getClassName(), gci.getClassBytes(), 0, gci.getClassBytes().length);
 
-        // create function object instance so we can set fields below and return a reference
-        ei = heap.newObject(funcObjType, ti);
+        // better key: record class + method name
+        String key = bmi.enclosingClass.getName() + "#" + samUniqueName;
+        gov.nasa.jpf.vm.RecordComponent[] rcs = bmi.getRecordComponents();
+        CallSiteMarshaller.registerHelper(key, gci.getClassName(), rcs);
 
-          // Register helper mapping keyed by the synthetic function object's SAM MethodInfo so the native peer can find it
-          try {
-          // find the SAM MethodInfo on the synthetic function object type
-          MethodInfo samMi = funcObjType.getMethod(samUniqueName, false);
-          if (samMi != null) {
-            String key = funcObjType.getName() + "#" + samMi.getUniqueName();
-            gov.nasa.jpf.vm.RecordComponent[] rcs = bmi.getRecordComponents();
-            CallSiteMarshaller.registerHelper(key, gci.getClassName(), rcs);
-
-            // create a peer instance and attach a NativeMethodInfo that delegates to our generic bridge
-            Class<?> peerCls = JPF_gov_nasa_jpf_vm_CallSiteBridge.class;
-            NativePeer peer = NativePeer.getInstance(peerCls, NativePeer.class);
-
-            // use a single generic bridge that accepts an argument array reference
-            java.lang.reflect.Method bridgeM = peer.getClass().getMethod("bridgeGeneric", MJIEnv.class, int.class, int.class);
-
-            NativeMethodInfo nmi = new NativeMethodInfo(samMi, bridgeM, peer);
-            nmi.replace(samMi);
-          }
-        } catch (Exception x) {
-          x.printStackTrace();
-        }
+        // compute result and push it directly to the stack (like string concat does)
+        computeAndPushRecordResult(ti, samUniqueName, bmi, freeVariableTypeNames, freeVariableValues);
+        return MJIEnv.NULL;
       } catch (Exception e) {
         e.printStackTrace();
         return MJIEnv.NULL;
@@ -351,6 +333,58 @@ public class FunctionObjectFactory {
       } else {
         fieldOffset += 1;
       }
+    }
+  }
+
+  /**
+   * Compute and push the ObjectMethods result (toString/equals/hashCode) for a record-like object.
+   * Uses provided MJIEnv for potential in-VM accessor invocation. Returns true if the call
+   * requested a repeatInvocation (so caller should return immediately).
+   */
+  /**
+   * Compute and push the ObjectMethods result (toString/equals/hashCode) for a record-like object.
+   * Creates its own MJIEnv and returns void; if it triggers repeatInvocation the caller will re-enter later.
+   */
+  private void computeAndPushRecordResult(ThreadInfo ti, String samUniqueName, BootstrapMethodInfo bmi,
+                                          String[] freeVariableTypeNames, Object[] freeVariableValues) {
+    String key = bmi.enclosingClass.getName() + "#" + samUniqueName;
+    String helperCls = CallSiteMarshaller.lookupHelper(key);
+    if (helperCls == null) return;
+
+    try {
+      Class<?> cls = Class.forName(helperCls);
+
+      MJIEnv env = new MJIEnv(ti);
+
+      // first arg is almost always the record instance ("this")
+      int recordRef = (freeVariableValues.length > 0 && freeVariableValues[0] instanceof ElementInfo)
+              ? ((ElementInfo) freeVariableValues[0]).getObjectRef() : MJIEnv.NULL;
+      Object[] comps = CallSiteMarshaller.extractComponents(env, recordRef, key);
+      if (env.isInvocationRepeated()) return;
+
+      StackFrame sf = ti.getModifiableTopFrame();
+
+      if ("toString".equals(samUniqueName)) {
+        java.lang.reflect.Method m = cls.getMethod("toString", Object[].class);
+        String res = (String) m.invoke(null, new Object[]{comps});
+        int strRef = ti.getHeap().newString(res, ti).getObjectRef();
+        sf.pushRef(strRef);
+      } else if ("equals".equals(samUniqueName)) {
+        int otherRef = (freeVariableValues.length > 1 && freeVariableValues[1] instanceof ElementInfo)
+                ? ((ElementInfo) freeVariableValues[1]).getObjectRef() : MJIEnv.NULL;
+        Object[] otherComps = CallSiteMarshaller.extractComponents(env, otherRef, key);
+        if (env.isInvocationRepeated()) return;
+
+        java.lang.reflect.Method m = cls.getMethod("equals", Object[].class, Object[].class);
+        Boolean res = (Boolean) m.invoke(null, new Object[]{comps, otherComps});
+        sf.push(res ? 1 : 0);
+      } else if ("hashCode".equals(samUniqueName)) {
+        java.lang.reflect.Method m = cls.getMethod("hashCode", Object[].class);
+        Integer res = (Integer) m.invoke(null, new Object[]{comps});
+        sf.push(res);
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
     }
   }
 }

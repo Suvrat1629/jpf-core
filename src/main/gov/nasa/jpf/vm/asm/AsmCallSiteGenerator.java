@@ -33,7 +33,8 @@ public class AsmCallSiteGenerator implements CallSiteGenerator {
             mv.visitEnd();
 
             // If this looks like an ObjectMethods bootstrap request, emit helpers that operate on Object[] of components.
-            boolean emitObjectMethods = "java.lang.invoke.ObjectMethods".equals(owner) || "ObjectMethods".equals(invoked);
+            // For POC/compatibility we always emit the helpers for now.
+            boolean emitObjectMethods = true; // "java.lang.invoke.ObjectMethods".equals(owner) || "ObjectMethods".equals(invoked);
 
             if (emitObjectMethods) {
                 // public static boolean equals(java.lang.Object[] a, java.lang.Object[] b) { return java.util.Arrays.equals(a,b); }

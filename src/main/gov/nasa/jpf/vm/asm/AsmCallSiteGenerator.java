@@ -4,6 +4,8 @@ import gov.nasa.jpf.vm.CallSiteDescriptor;
 import gov.nasa.jpf.vm.CallSiteGenerator;
 import gov.nasa.jpf.vm.GeneratedClassInfo;
 import gov.nasa.jpf.vm.GenerationException;
+import gov.nasa.jpf.vm.CallSiteUtil;
+import gov.nasa.jpf.vm.BootstrapBlueprint;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 
@@ -19,7 +21,9 @@ public class AsmCallSiteGenerator implements CallSiteGenerator {
             String owner = desc.getOwnerClassName();
             String invoked = desc.getInvokedName();
 
-            String className = "gov/nasa/jpf/gen/CS$" + Integer.toHexString(desc.hashCode());
+            String base = desc.getOwnerClassName() + "#" + desc.getInvokedName();
+            String fp = CallSiteUtil.shortFingerprint(base, 12);
+            String className = "gov/nasa/jpf/gen/CS$" + fp;
             ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
             cw.visit(Opcodes.V11, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, className, null, "java/lang/Object", null);
 
@@ -32,9 +36,7 @@ public class AsmCallSiteGenerator implements CallSiteGenerator {
             mv.visitMaxs(1, 1);
             mv.visitEnd();
 
-            // If this looks like an ObjectMethods bootstrap request, emit helpers that operate on Object[] of components.
-            // For POC/compatibility we always emit the helpers for now.
-            boolean emitObjectMethods = true; // "java.lang.invoke.ObjectMethods".equals(owner) || "ObjectMethods".equals(invoked);
+            boolean emitObjectMethods = true;
 
             if (emitObjectMethods) {
                 // public static boolean equals(java.lang.Object[] a, java.lang.Object[] b) { return java.util.Arrays.equals(a,b); }
@@ -86,5 +88,10 @@ public class AsmCallSiteGenerator implements CallSiteGenerator {
     @Override
     public void updateTarget(GeneratedClassInfo generated, Object newTarget) throws GenerationException {
         // no-op for skeleton
+    }
+
+    // Overload that accepts a blueprint; currently delegates to the primary generator.
+    public GeneratedClassInfo generateAdapter(CallSiteDescriptor desc, BootstrapBlueprint blueprint) throws GenerationException {
+        return generateAdapter(desc);
     }
 }

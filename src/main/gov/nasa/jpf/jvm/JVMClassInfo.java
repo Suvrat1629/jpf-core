@@ -22,6 +22,8 @@ import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.ArrayList;
 
 import gov.nasa.jpf.Config;
 import gov.nasa.jpf.util.Misc;
@@ -54,6 +56,7 @@ import gov.nasa.jpf.vm.TypeParameterAnnotationInfo;
 import gov.nasa.jpf.vm.TypeParameterBoundAnnotationInfo;
 import gov.nasa.jpf.vm.Types;
 import gov.nasa.jpf.vm.VariableAnnotationInfo;
+import gov.nasa.jpf.vm.BootstrapComponent;
 
 /**
  * a ClassInfo that was created from a Java classfile
@@ -186,8 +189,8 @@ public class JVMClassInfo extends ClassInfo {
           BootstrapMethodInfo bmi = new BootstrapMethodInfo(enclosingLambdaCls, cpArgs);
           try {
             if (cpArgs != null && cpArgs.length > 0) {
-              java.util.List<String> compTypes = new java.util.ArrayList<>();
-              java.util.List<gov.nasa.jpf.vm.RecordComponent> recordAcc = new java.util.ArrayList<>();
+              List<String> compTypes = new ArrayList<>();
+              List<BootstrapComponent> recordAcc = new ArrayList<>();
               for (int a : cpArgs) {
                 if (a <= 0 || a >= cf.getNumberOfCpEntries()) continue;
                 int cpTag = cf.getCpTag(a);
@@ -256,14 +259,14 @@ public class JVMClassInfo extends ClassInfo {
                 }
                 // always try to collect accessor metadata when available
                 if (name != null || owner != null || rcRefKind != 0) {
-                  recordAcc.add(new gov.nasa.jpf.vm.RecordComponent(owner, name, compSig, rcRefKind));
+                  recordAcc.add(new BootstrapComponent(owner, name, compSig, rcRefKind));
                 }
               }
                 if (!compTypes.isEmpty()) {
                   bmi.setComponentTypeNames(compTypes.toArray(new String[0]));
                 }
                 if (!recordAcc.isEmpty()) {
-                  bmi.setRecordComponents(recordAcc.toArray(new gov.nasa.jpf.vm.RecordComponent[0]));
+                  bmi.setBootstrapComponents(recordAcc.toArray(new BootstrapComponent[0]));
                 }
             }
           } catch (Exception x) {

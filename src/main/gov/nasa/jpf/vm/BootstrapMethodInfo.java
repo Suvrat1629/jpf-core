@@ -73,7 +73,7 @@ public class BootstrapMethodInfo {
   // Resolved record component type signatures (JVM descriptor form), if available
   String[] componentTypeNames;
   // Resolved record component accessors (best-effort)
-  RecordComponent[] recordComponents;
+  BootstrapComponent[] bootstrapComponents;
 
   @Override
   public String toString() {
@@ -103,7 +103,7 @@ public class BootstrapMethodInfo {
 
   public void setComponentTypeNames(String[] componentTypeNames) { this.componentTypeNames = componentTypeNames; }
 
-  public RecordComponent[] getRecordComponents() { return recordComponents; }
+  public BootstrapComponent[] getBootstrapComponents() { return bootstrapComponents; }
 
-  public void setRecordComponents(RecordComponent[] recordComponents) { this.recordComponents = recordComponents; }
+  public void setBootstrapComponents(BootstrapComponent[] bootstrapComponents) { this.bootstrapComponents = bootstrapComponents; }
 }

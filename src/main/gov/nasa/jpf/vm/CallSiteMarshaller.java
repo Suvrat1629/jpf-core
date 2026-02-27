@@ -7,13 +7,15 @@ package gov.nasa.jpf.vm;
  * record/object-method helpers (Strings and boxed primitives). It provides a
  * small number of conversions used by the ASM-based generator proof-of-concept.
  */
+import java.util.concurrent.ConcurrentHashMap;
+
 public class CallSiteMarshaller {
   // registry mapping method identifier (className#uniqueMethodName) -> helper class name
-  private static final java.util.concurrent.ConcurrentHashMap<String,String> helperRegistry = new java.util.concurrent.ConcurrentHashMap<>();
+  private static final ConcurrentHashMap<String,String> helperRegistry = new ConcurrentHashMap<>();
   // optional registry mapping method identifier -> resolved component type signatures
-  private static final java.util.concurrent.ConcurrentHashMap<String,String[]> compTypeRegistry = new java.util.concurrent.ConcurrentHashMap<>();
-  // optional registry mapping method identifier -> resolved accessor metadata
-  private static final java.util.concurrent.ConcurrentHashMap<String,gov.nasa.jpf.vm.RecordComponent[]> compAccessorRegistry = new java.util.concurrent.ConcurrentHashMap<>();
+  private static final ConcurrentHashMap<String,String[]> compTypeRegistry = new ConcurrentHashMap<>();
+  private static final ConcurrentHashMap<String,BootstrapComponent[]> compAccessorRegistry = new ConcurrentHashMap<>();
+  private static final ConcurrentHashMap<String, BootstrapBlueprint> compBlueprintRegistry = new ConcurrentHashMap<>();
 
   /**
   * Convert a JPF argument value into a host-side Java object.
@@ -68,10 +70,22 @@ public class CallSiteMarshaller {
     }
   }
 
-  public static void registerHelper(String methodKey, String helperClassName, gov.nasa.jpf.vm.RecordComponent[] accessors) {
+  public static void registerHelper(String methodKey, String helperClassName, BootstrapComponent[] accessors) {
     helperRegistry.put(methodKey, helperClassName);
     if (accessors != null) {
       compAccessorRegistry.put(methodKey, accessors.clone());
+    }
+  }
+
+  public static void registerHelper(String methodKey, String helperClassName, BootstrapBlueprint blueprint) {
+    helperRegistry.put(methodKey, helperClassName);
+    if (blueprint == null) return;
+    compBlueprintRegistry.put(methodKey, blueprint);
+    if (blueprint.accessors != null) {
+      compAccessorRegistry.put(methodKey, blueprint.accessors.clone());
+    }
+    if (blueprint.componentTypeNames != null) {
+      compTypeRegistry.put(methodKey, blueprint.componentTypeNames.clone());
     }
   }
 
@@ -84,9 +98,13 @@ public class CallSiteMarshaller {
     return v == null ? null : v.clone();
   }
 
-  public static gov.nasa.jpf.vm.RecordComponent[] lookupRecordComponents(String methodKey) {
-    gov.nasa.jpf.vm.RecordComponent[] v = compAccessorRegistry.get(methodKey);
+  public static BootstrapComponent[] lookupBootstrapComponents(String methodKey) {
+    BootstrapComponent[] v = compAccessorRegistry.get(methodKey);
     return v == null ? null : v.clone();
+  }
+
+  public static BootstrapBlueprint lookupBootstrapBlueprint(String methodKey) {
+    return compBlueprintRegistry.get(methodKey);
   }
 
   /**
@@ -110,11 +128,11 @@ public class CallSiteMarshaller {
     FieldInfo[] fields = ci.getInstanceFields();
 
     // Prefer accessor metadata if available
-    gov.nasa.jpf.vm.RecordComponent[] accessors = (methodKey != null) ? lookupRecordComponents(methodKey) : null;
+    BootstrapComponent[] accessors = (methodKey != null) ? lookupBootstrapComponents(methodKey) : null;
     if (accessors != null && accessors.length > 0) {
       Object[] comps = new Object[accessors.length];
       for (int i = 0; i < accessors.length; i++) {
-        gov.nasa.jpf.vm.RecordComponent rc = accessors[i];
+        BootstrapComponent rc = accessors[i];
         try {
           // If accessor refers to a field (or we can treat it as a field), extract by field name
           if (rc.name != null && (rc.refKind == gov.nasa.jpf.jvm.ClassFile.REF_GETFIELD || rc.refKind == gov.nasa.jpf.jvm.ClassFile.REF_GETSTATIC || rc.desc != null && rc.desc.startsWith("L") || rc.desc != null && rc.desc.length() > 0)) {

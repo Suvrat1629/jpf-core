@@ -30,6 +30,13 @@ import gov.nasa.jpf.vm.asm.AsmCallSiteGenerator;
  * @author Nastaran Shafiei <nastaran.shafiei@gmail.com>
  */
 public class FunctionObjectFactory {
+  // pluggable bootstrap handlers (ObjectMethods, LambdaMetafactory, StringConcat, ...)
+  private final List<BootstrapHandler> handlers = new ArrayList<>();
+
+  private void registerDefaultHandlers() {
+    handlers.add(new ObjectMethodsHandler());
+    // future handlers can be added here
+  }
   /**
    * Return JVM class objects from JPF class labels
    *
@@ -128,6 +135,11 @@ public class FunctionObjectFactory {
   public int getFunctionObject(int bsIdx, ThreadInfo ti, ClassInfo fiClassInfo, String samUniqueName, BootstrapMethodInfo bmi,
                                String[] freeVariableTypeNames, Object[] freeVariableValues) {
 
+    if (handlers.isEmpty()) {
+      registerDefaultHandlers();
+    }
+
+
     ClassLoaderInfo cli = bmi.enclosingClass.getClassLoaderInfo();
     ClassInfo funcObjType = cli.getResolvedFuncObjType(bsIdx, fiClassInfo, samUniqueName, bmi, freeVariableTypeNames);
 
@@ -139,31 +151,19 @@ public class FunctionObjectFactory {
     if (bmi.getBmType() == BootstrapMethodInfo.BMType.STRING_CONCATENATION) {
       createConcatStringCall(ti, bmi.getBmArg(), freeVariableTypeNames, freeVariableValues);
       return MJIEnv.NULL;
-    } else if (bmi.getBmType() == BootstrapMethodInfo.BMType.OBJECT_METHODS) {
-      // Clean final version: generate helper + compute result + push to stack, return NULL
-      // No function object, no SAM replacement, no bridge registration for SAM
-      AsmCallSiteGenerator gen = new AsmCallSiteGenerator();
-      String[] compTypes = bmi.getComponentTypeNames();
-      CallSiteDescriptor desc = new CallSiteDescriptor(bmi.enclosingClass.getName(), samUniqueName, "", null, compTypes);
-      try {
-        GeneratedClassInfo gci = gen.generateAdapter(desc);
-        ClassInfo helperCi = cli.getResolvedClassInfo(gci.getClassName(), gci.getClassBytes(), 0, gci.getClassBytes().length);
+    }
 
-        // better key: record class + method name
-        String key = bmi.enclosingClass.getName() + "#" + samUniqueName;
-        gov.nasa.jpf.vm.RecordComponent[] rcs = bmi.getRecordComponents();
-        CallSiteMarshaller.registerHelper(key, gci.getClassName(), rcs);
-
-        // compute result and push it directly to the stack (like string concat does)
-        computeAndPushRecordResult(ti, samUniqueName, bmi, freeVariableTypeNames, freeVariableValues);
-        return MJIEnv.NULL;
-      } catch (Exception e) {
-        e.printStackTrace();
+    // dispatch to registered bootstrap handlers (record/ObjectMethods, lambda, etc.)
+    for (BootstrapHandler h : handlers) {
+      if (h.canHandle(bmi)) {
+        boolean repeated = h.handle(ti, bmi, samUniqueName, freeVariableTypeNames, freeVariableValues);
+        if (repeated) return MJIEnv.NULL;
         return MJIEnv.NULL;
       }
-    } else {
-      ei = heap.newObject(funcObjType, ti); // In the case of Lambda Expressions
     }
+
+    // no handler matched -> treat as lambda/function object
+    ei = heap.newObject(funcObjType, ti); // In the case of Lambda Expressions
 
     //It does not make sense to call setFuncObjFields in the case of string concatenation since the String object
     //in the JPF heap has only three fields. This call will fail for any concatenation with more than three variables.
@@ -336,55 +336,5 @@ public class FunctionObjectFactory {
     }
   }
 
-  /**
-   * Compute and push the ObjectMethods result (toString/equals/hashCode) for a record-like object.
-   * Uses provided MJIEnv for potential in-VM accessor invocation. Returns true if the call
-   * requested a repeatInvocation (so caller should return immediately).
-   */
-  /**
-   * Compute and push the ObjectMethods result (toString/equals/hashCode) for a record-like object.
-   * Creates its own MJIEnv and returns void; if it triggers repeatInvocation the caller will re-enter later.
-   */
-  private void computeAndPushRecordResult(ThreadInfo ti, String samUniqueName, BootstrapMethodInfo bmi,
-                                          String[] freeVariableTypeNames, Object[] freeVariableValues) {
-    String key = bmi.enclosingClass.getName() + "#" + samUniqueName;
-    String helperCls = CallSiteMarshaller.lookupHelper(key);
-    if (helperCls == null) return;
-
-    try {
-      Class<?> cls = Class.forName(helperCls);
-
-      MJIEnv env = new MJIEnv(ti);
-
-      // first arg is almost always the record instance ("this")
-      int recordRef = (freeVariableValues.length > 0 && freeVariableValues[0] instanceof ElementInfo)
-              ? ((ElementInfo) freeVariableValues[0]).getObjectRef() : MJIEnv.NULL;
-      Object[] comps = CallSiteMarshaller.extractComponents(env, recordRef, key);
-      if (env.isInvocationRepeated()) return;
-
-      StackFrame sf = ti.getModifiableTopFrame();
-
-      if ("toString".equals(samUniqueName)) {
-        java.lang.reflect.Method m = cls.getMethod("toString", Object[].class);
-        String res = (String) m.invoke(null, new Object[]{comps});
-        int strRef = ti.getHeap().newString(res, ti).getObjectRef();
-        sf.pushRef(strRef);
-      } else if ("equals".equals(samUniqueName)) {
-        int otherRef = (freeVariableValues.length > 1 && freeVariableValues[1] instanceof ElementInfo)
-                ? ((ElementInfo) freeVariableValues[1]).getObjectRef() : MJIEnv.NULL;
-        Object[] otherComps = CallSiteMarshaller.extractComponents(env, otherRef, key);
-        if (env.isInvocationRepeated()) return;
-
-        java.lang.reflect.Method m = cls.getMethod("equals", Object[].class, Object[].class);
-        Boolean res = (Boolean) m.invoke(null, new Object[]{comps, otherComps});
-        sf.push(res ? 1 : 0);
-      } else if ("hashCode".equals(samUniqueName)) {
-        java.lang.reflect.Method m = cls.getMethod("hashCode", Object[].class);
-        Integer res = (Integer) m.invoke(null, new Object[]{comps});
-        sf.push(res);
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-  }
+  // computeAndPushRecordResult moved into ObjectMethodsHandler
 }

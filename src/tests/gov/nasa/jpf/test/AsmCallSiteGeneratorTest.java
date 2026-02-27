@@ -15,7 +15,7 @@ public class AsmCallSiteGeneratorTest {
         AsmCallSiteGenerator gen = new AsmCallSiteGenerator();
         // simulate an ObjectMethods bootstrap request for a record with two components
         String[] componentSigs = new String[] {"Ljava/lang/String;", "I"};
-        CallSiteDescriptor desc = new CallSiteDescriptor("java.lang.invoke.ObjectMethods", "objectMethods", "", null, componentSigs);
+    CallSiteDescriptor desc = new CallSiteDescriptor("java.lang.invoke.ObjectMethods", "objectMethods", "", componentSigs);
         GeneratedClassInfo info = gen.generateAdapter(desc);
         assertNotNull(info);
         assertTrue(info.hasBytes());

@@ -13,6 +13,5 @@ public interface CallSiteGenerator {
     /**
      * Update the target of a mutable call-site if supported by the generator.
      */
-    void updateTarget(GeneratedClassInfo generated, Object newTarget) throws GenerationException;
 }
 

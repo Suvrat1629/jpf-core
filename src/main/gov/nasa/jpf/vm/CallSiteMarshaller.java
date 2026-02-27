@@ -12,9 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class CallSiteMarshaller {
   // registry mapping method identifier (className#uniqueMethodName) -> helper class name
   private static final ConcurrentHashMap<String,String> helperRegistry = new ConcurrentHashMap<>();
-  // optional registry mapping method identifier -> resolved component type signatures
-  private static final ConcurrentHashMap<String,String[]> compTypeRegistry = new ConcurrentHashMap<>();
-  private static final ConcurrentHashMap<String,BootstrapComponent[]> compAccessorRegistry = new ConcurrentHashMap<>();
+  // consolidated registry: optional blueprint metadata (component types + accessors)
   private static final ConcurrentHashMap<String, BootstrapBlueprint> compBlueprintRegistry = new ConcurrentHashMap<>();
 
   /**
@@ -62,31 +60,10 @@ public class CallSiteMarshaller {
   public static void registerHelper(String methodKey, String helperClassName) {
     helperRegistry.put(methodKey, helperClassName);
   }
-
-  public static void registerHelper(String methodKey, String helperClassName, String[] componentTypeNames) {
-    helperRegistry.put(methodKey, helperClassName);
-    if (componentTypeNames != null) {
-      compTypeRegistry.put(methodKey, componentTypeNames.clone());
-    }
-  }
-
-  public static void registerHelper(String methodKey, String helperClassName, BootstrapComponent[] accessors) {
-    helperRegistry.put(methodKey, helperClassName);
-    if (accessors != null) {
-      compAccessorRegistry.put(methodKey, accessors.clone());
-    }
-  }
-
   public static void registerHelper(String methodKey, String helperClassName, BootstrapBlueprint blueprint) {
     helperRegistry.put(methodKey, helperClassName);
     if (blueprint == null) return;
     compBlueprintRegistry.put(methodKey, blueprint);
-    if (blueprint.accessors != null) {
-      compAccessorRegistry.put(methodKey, blueprint.accessors.clone());
-    }
-    if (blueprint.componentTypeNames != null) {
-      compTypeRegistry.put(methodKey, blueprint.componentTypeNames.clone());
-    }
   }
 
   public static String lookupHelper(String methodKey) {
@@ -94,17 +71,48 @@ public class CallSiteMarshaller {
   }
 
   public static String[] lookupComponentTypeNames(String methodKey) {
-    String[] v = compTypeRegistry.get(methodKey);
+    BootstrapBlueprint bp = compBlueprintRegistry.get(methodKey);
+    String[] v = bp == null ? null : bp.componentTypeNames;
     return v == null ? null : v.clone();
   }
 
   public static BootstrapComponent[] lookupBootstrapComponents(String methodKey) {
-    BootstrapComponent[] v = compAccessorRegistry.get(methodKey);
+    BootstrapBlueprint bp = compBlueprintRegistry.get(methodKey);
+    BootstrapComponent[] v = bp == null ? null : bp.accessors;
     return v == null ? null : v.clone();
   }
 
-  public static BootstrapBlueprint lookupBootstrapBlueprint(String methodKey) {
-    return compBlueprintRegistry.get(methodKey);
+  // Helper: directly obtain a field value from an object as a host-side object
+  private static Object extractFieldValue(MJIEnv env, int objRef, FieldInfo fi) {
+    if (fi == null) return null;
+    String sig = fi.getSignature();
+    try {
+      if (sig.startsWith("L")) {
+        int r = env.getReferenceField(objRef, fi.getName());
+        if ("Ljava/lang/String;".equals(sig)) {
+          return env.getStringObject(r);
+        } else if (r == MJIEnv.NULL) {
+          return null;
+        } else {
+          return null;
+        }
+      } else {
+        char t = sig.charAt(0);
+        switch (t) {
+          case 'I': return Integer.valueOf(env.getIntField(objRef, fi.getName()));
+          case 'J': return Long.valueOf(env.getLongField(objRef, fi.getName()));
+          case 'D': return Double.valueOf(env.getDoubleField(objRef, fi.getName()));
+          case 'F': return Float.valueOf(env.getFloatField(objRef, fi.getName()));
+          case 'S': return Short.valueOf(env.getShortField(objRef, fi.getName()));
+          case 'B': return Byte.valueOf(env.getByteField(objRef, fi.getName()));
+          case 'C': return Character.valueOf(env.getCharField(objRef, fi.getName()));
+          case 'Z': return Boolean.valueOf(env.getBooleanField(objRef, fi.getName()));
+          default: return null;
+        }
+      }
+    } catch (Exception x) {
+      return null;
+    }
   }
 
   /**
@@ -151,30 +159,7 @@ public class CallSiteMarshaller {
                 }
               }
             if (matchField != null) {
-              String sig = matchField.getSignature();
-              if (sig.startsWith("L")) {
-                int r = env.getReferenceField(objRef, matchField.getName());
-                if ("Ljava/lang/String;".equals(sig)) {
-                  comps[i] = env.getStringObject(r);
-                } else if (r == MJIEnv.NULL) {
-                  comps[i] = null;
-                } else {
-                  comps[i] = null;
-                }
-              } else {
-                char t = sig.charAt(0);
-                switch (t) {
-                  case 'I': comps[i] = Integer.valueOf(env.getIntField(objRef, matchField.getName())); break;
-                  case 'J': comps[i] = Long.valueOf(env.getLongField(objRef, matchField.getName())); break;
-                  case 'D': comps[i] = Double.valueOf(env.getDoubleField(objRef, matchField.getName())); break;
-                  case 'F': comps[i] = Float.valueOf(env.getFloatField(objRef, matchField.getName())); break;
-                  case 'S': comps[i] = Short.valueOf(env.getShortField(objRef, matchField.getName())); break;
-                  case 'B': comps[i] = Byte.valueOf(env.getByteField(objRef, matchField.getName())); break;
-                  case 'C': comps[i] = Character.valueOf(env.getCharField(objRef, matchField.getName())); break;
-                  case 'Z': comps[i] = Boolean.valueOf(env.getBooleanField(objRef, matchField.getName())); break;
-                  default: comps[i] = null; break;
-                }
-              }
+              comps[i] = extractFieldValue(env, objRef, matchField);
               continue;
             }
             // If we didn't find a matching field, but we have an accessor method, try to
@@ -249,29 +234,7 @@ public class CallSiteMarshaller {
           if (sig.equals(want)) {
             // extract value for this field
             try {
-              if (sig.startsWith("L")) {
-                int r = env.getReferenceField(objRef, fi.getName());
-                if ("Ljava/lang/String;".equals(sig)) {
-                  comps[i] = env.getStringObject(r);
-                } else if (r == MJIEnv.NULL) {
-                  comps[i] = null;
-                } else {
-                  comps[i] = null;
-                }
-              } else {
-                char t = sig.charAt(0);
-                switch (t) {
-                  case 'I': comps[i] = Integer.valueOf(env.getIntField(objRef, fi.getName())); break;
-                  case 'J': comps[i] = Long.valueOf(env.getLongField(objRef, fi.getName())); break;
-                  case 'D': comps[i] = Double.valueOf(env.getDoubleField(objRef, fi.getName())); break;
-                  case 'F': comps[i] = Float.valueOf(env.getFloatField(objRef, fi.getName())); break;
-                  case 'S': comps[i] = Short.valueOf(env.getShortField(objRef, fi.getName())); break;
-                  case 'B': comps[i] = Byte.valueOf(env.getByteField(objRef, fi.getName())); break;
-                  case 'C': comps[i] = Character.valueOf(env.getCharField(objRef, fi.getName())); break;
-                  case 'Z': comps[i] = Boolean.valueOf(env.getBooleanField(objRef, fi.getName())); break;
-                  default: comps[i] = null; break;
-                }
-              }
+              comps[i] = extractFieldValue(env, objRef, fi);
             } catch (Exception x) {
               comps[i] = null;
             }
@@ -292,32 +255,8 @@ public class CallSiteMarshaller {
 
     for (int i = 0; i < fields.length; i++) {
       FieldInfo fi = fields[i];
-      String sig = fi.getSignature();
       try {
-        if (sig.startsWith("L")) { // reference
-          int r = env.getReferenceField(objRef, fi.getName());
-          if ("Ljava/lang/String;".equals(sig)) {
-            comps[i] = env.getStringObject(r);
-          } else if (r == MJIEnv.NULL) {
-            comps[i] = null;
-          } else {
-            // not attempting deep conversion for arbitrary references
-            comps[i] = null;
-          }
-        } else {
-          char t = sig.charAt(0);
-          switch (t) {
-            case 'I': comps[i] = Integer.valueOf(env.getIntField(objRef, fi.getName())); break;
-            case 'J': comps[i] = Long.valueOf(env.getLongField(objRef, fi.getName())); break;
-            case 'D': comps[i] = Double.valueOf(env.getDoubleField(objRef, fi.getName())); break;
-            case 'F': comps[i] = Float.valueOf(env.getFloatField(objRef, fi.getName())); break;
-            case 'S': comps[i] = Short.valueOf(env.getShortField(objRef, fi.getName())); break;
-            case 'B': comps[i] = Byte.valueOf(env.getByteField(objRef, fi.getName())); break;
-            case 'C': comps[i] = Character.valueOf(env.getCharField(objRef, fi.getName())); break;
-            case 'Z': comps[i] = Boolean.valueOf(env.getBooleanField(objRef, fi.getName())); break;
-            default: comps[i] = null; break;
-          }
-        }
+        comps[i] = extractFieldValue(env, objRef, fi);
       } catch (Exception x) {
         comps[i] = null;
       }

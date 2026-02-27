@@ -21,7 +21,7 @@ public class CallSiteBlueprintTest {
                 new BootstrapComponent(null, "second", "I", 0) };
         BootstrapBlueprint blueprint = new BootstrapBlueprint(componentSigs, acc, "OBJECT_METHODS");
 
-        CallSiteDescriptor desc = new CallSiteDescriptor("java.lang.invoke.ObjectMethods", "objectMethods", "", null, componentSigs);
+    CallSiteDescriptor desc = new CallSiteDescriptor("java.lang.invoke.ObjectMethods", "objectMethods", "", componentSigs);
         GeneratedClassInfo info = gen.generateAdapter(desc, blueprint);
         assertNotNull(info);
         assertTrue(info.hasBytes());

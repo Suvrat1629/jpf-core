@@ -85,11 +85,6 @@ public class AsmCallSiteGenerator implements CallSiteGenerator {
         }
     }
 
-    @Override
-    public void updateTarget(GeneratedClassInfo generated, Object newTarget) throws GenerationException {
-        // no-op for skeleton
-    }
-
     // Overload that accepts a blueprint; currently delegates to the primary generator.
     public GeneratedClassInfo generateAdapter(CallSiteDescriptor desc, BootstrapBlueprint blueprint) throws GenerationException {
         return generateAdapter(desc);

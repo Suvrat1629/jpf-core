@@ -17,7 +17,7 @@ public class AsmCallSiteGenerator implements CallSiteGenerator {
     @Override
     public GeneratedClassInfo generateAdapter(CallSiteDescriptor desc) throws GenerationException {
         try {
-            // Special-case: generate ObjectMethods helper that operates on component arrays
+            // Special-case: generate a bootstrap helper that operates on component arrays
             String owner = desc.getOwnerClassName();
             String invoked = desc.getInvokedName();
 
@@ -36,9 +36,9 @@ public class AsmCallSiteGenerator implements CallSiteGenerator {
             mv.visitMaxs(1, 1);
             mv.visitEnd();
 
-            boolean emitObjectMethods = true;
+            boolean emitBootstrapHelper = true;
 
-            if (emitObjectMethods) {
+            if (emitBootstrapHelper) {
                 // public static boolean equals(java.lang.Object[] a, java.lang.Object[] b) { return java.util.Arrays.equals(a,b); }
                 mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "equals", "([Ljava/lang/Object;[Ljava/lang/Object;)Z", null, null);
                 mv.visitCode();

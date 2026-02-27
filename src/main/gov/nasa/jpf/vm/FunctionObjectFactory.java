@@ -35,7 +35,9 @@ public class FunctionObjectFactory {
 
   private void registerDefaultHandlers() {
     handlers.add(new ObjectMethodsHandler());
-    // future handlers can be added here
+    // example additional handlers:
+    // handlers.add(new LambdaMetafactoryHandler());
+    // handlers.add(new StringConcatFactoryHandler());
   }
   /**
    * Return JVM class objects from JPF class labels
@@ -336,5 +338,5 @@ public class FunctionObjectFactory {
     }
   }
 
-  // computeAndPushRecordResult moved into ObjectMethodsHandler
+  // NOTE: record/ObjectMethods result handling lives in ObjectMethodsHandler.
 }

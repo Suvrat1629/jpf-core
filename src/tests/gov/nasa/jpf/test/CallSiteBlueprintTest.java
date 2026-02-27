@@ -15,7 +15,7 @@ public class CallSiteBlueprintTest {
     @Test
     public void generateAdapterWithBlueprint() throws Exception {
         AsmCallSiteGenerator gen = new AsmCallSiteGenerator();
-        // simulate an ObjectMethods bootstrap request for a record with two components
+    // simulate a bootstrap call-site with component types
         String[] componentSigs = new String[] {"Ljava/lang/String;", "I"};
         BootstrapComponent[] acc = new BootstrapComponent[] { new BootstrapComponent(null, "first", "Ljava/lang/String;", 0),
                 new BootstrapComponent(null, "second", "I", 0) };

@@ -99,7 +99,7 @@ public class BootstrapMethodInfo {
 
   public void setBmType(BMType bmType) { this.bmType = bmType; }
 
-  public String[] getComponentTypeNames() { return componentTypeNames; }
+  public String[] getBootstrapArgTypes() { return componentTypeNames; }
 
   public void setComponentTypeNames(String[] componentTypeNames) { this.componentTypeNames = componentTypeNames; }
 

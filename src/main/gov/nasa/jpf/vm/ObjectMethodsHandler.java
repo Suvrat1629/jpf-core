@@ -19,7 +19,7 @@ public class ObjectMethodsHandler implements BootstrapHandler {
                         String[] freeVariableTypeNames, Object[] freeVariableValues) {
     ClassLoaderInfo cli = bmi.enclosingClass.getClassLoaderInfo();
     AsmCallSiteGenerator gen = new AsmCallSiteGenerator();
-  String[] compTypes = bmi.getComponentTypeNames();
+  String[] compTypes = bmi.getBootstrapArgTypes();
   CallSiteDescriptor desc = new CallSiteDescriptor(bmi.enclosingClass.getName(), samUniqueName, "", compTypes);
     try {
       BootstrapBlueprint blueprint = BootstrapResolver.resolve(bmi);

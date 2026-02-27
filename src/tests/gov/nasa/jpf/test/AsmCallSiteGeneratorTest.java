@@ -13,7 +13,7 @@ public class AsmCallSiteGeneratorTest {
     @Test
     public void generateSimpleAdapter() throws Exception {
         AsmCallSiteGenerator gen = new AsmCallSiteGenerator();
-        // simulate an ObjectMethods bootstrap request for a record with two components
+    // simulate a bootstrap call-site with component types
         String[] componentSigs = new String[] {"Ljava/lang/String;", "I"};
     CallSiteDescriptor desc = new CallSiteDescriptor("java.lang.invoke.ObjectMethods", "objectMethods", "", componentSigs);
         GeneratedClassInfo info = gen.generateAdapter(desc);

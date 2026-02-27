@@ -4,7 +4,7 @@ package gov.nasa.jpf.vm;
  * Helper utilities to marshal values between JPF VM representations and host Java objects.
  *
  * This is intentionally conservative: it handles the most common types used by
- * record/object-method helpers (Strings and boxed primitives). It provides a
+ * bootstrap helpers (Strings and boxed primitives). It provides a
  * small number of conversions used by the ASM-based generator proof-of-concept.
  */
 import java.util.concurrent.ConcurrentHashMap;

@@ -9,9 +9,5 @@ public interface CallSiteGenerator {
      * a GeneratedClassInfo with raw class bytes or a JPF ClassInfo-backed result.
      */
     GeneratedClassInfo generateAdapter(CallSiteDescriptor desc) throws GenerationException;
-
-    /**
-     * Update the target of a mutable call-site if supported by the generator.
-     */
 }
 

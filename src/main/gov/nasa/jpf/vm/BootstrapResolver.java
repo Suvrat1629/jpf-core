@@ -8,7 +8,7 @@ public class BootstrapResolver {
 
   public static BootstrapBlueprint resolve(BootstrapMethodInfo bmi) {
     if (bmi == null) return null;
-    String[] compTypes = bmi.getComponentTypeNames();
+  String[] compTypes = bmi.getBootstrapArgTypes();
     BootstrapComponent[] accessors = bmi.getBootstrapComponents();
     String bmType = bmi.getBmType() == null ? null : bmi.getBmType().name();
     return new BootstrapBlueprint(compTypes, accessors, bmType);

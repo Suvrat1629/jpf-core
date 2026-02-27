@@ -43,7 +43,7 @@ public final class CallSiteDescriptor {
     }
 
 
-    public String[] getComponentTypeNames() {
+    public String[] getBootstrapArgTypes() {
         return componentTypeNames == null ? null : Arrays.copyOf(componentTypeNames, componentTypeNames.length);
     }
 
